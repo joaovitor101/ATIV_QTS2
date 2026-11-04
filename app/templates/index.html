@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helpdesk TI — Abertura de Chamados</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; background: #f0f2f5; color: #222; }
+        header { background: #003366; color: #fff; padding: 16px 24px; }
+        header h1 { margin: 0; font-size: 1.4rem; }
+        main { max-width: 700px; margin: 24px auto; padding: 0 16px; }
+        section { background: #fff; border-radius: 8px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+        h2 { margin-top: 0; font-size: 1.1rem; color: #003366; }
+        label { display: block; margin-top: 12px; font-weight: bold; font-size: .9rem; }
+        input, select, textarea {
+            width: 100%; padding: 8px 10px; margin-top: 4px;
+            border: 1px solid #767676; border-radius: 4px; font-size: 1rem;
+        }
+        textarea { resize: vertical; min-height: 80px; }
+        button[type="submit"] {
+            margin-top: 16px; padding: 10px 20px;
+            background: #003366; color: #fff; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 1rem;
+        }
+        button[type="submit"]:hover { background: #004d99; }
+        button:focus, input:focus, select:focus, textarea:focus { outline: 3px solid #ffbf47; }
+        ul { list-style: none; padding: 0; margin: 0; }
+        li {
+            padding: 12px; margin-bottom: 8px; border-radius: 4px;
+            background: #eef2f7; border-left: 5px solid #003366;
+        }
+        li.critico {
+            background: #fff0f0; border-left-color: #cc0000;
+        }
+        li.critico .badge {
+            display: inline-block; background: #cc0000; color: #fff;
+            font-size: .75rem; font-weight: bold; padding: 2px 8px;
+            border-radius: 12px; margin-left: 8px; vertical-align: middle;
+        }
+        .meta { font-size: .82rem; color: #555; margin-top: 4px; }
+        #status-msg { margin-top: 12px; padding: 10px; border-radius: 4px; display: none; }
+        #status-msg.ok  { background: #d4edda; color: #155724; }
+        #status-msg.err { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🖥️ Helpdesk TI — Abertura de Chamados</h1>
+    </header>
+    <main>
+        <section>
+            <h2>Abrir Novo Chamado</h2>
+            <form id="chamado-form">
+                <label for="solicitante">Nome do Solicitante <small>(mín. 3 caracteres)</small></label>
+                <input type="text" id="solicitante" name="solicitante" minlength="3" required />
+
+                <label for="setor">Setor</label>
+                <select id="setor" name="setor" required>
+                    <option value="" disabled selected>Selecione o setor...</option>
+                    {% for s in setores %}
+                    <option value="{{ s }}">{{ s }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="descricao">Descrição do Problema <small>(mín. 10 caracteres)</small></label>
+                <textarea id="descricao" name="descricao" minlength="10" required></textarea>
+
+                <label for="prioridade">Prioridade</label>
+                <select id="prioridade" name="prioridade" required>
+                    {% for p in prioridades %}
+                    <option value="{{ p }}">{{ p }}</option>
+                    {% endfor %}
+                </select>
+
+                <button type="submit" id="btn-submit">Abrir Chamado</button>
+                <div id="status-msg" role="alert" aria-live="polite"></div>
+            </form>
+        </section>
+
+        <section>
+            <h2>Chamados Pendentes</h2>
+            <ul id="chamados-list" aria-label="Lista de Chamados Pendentes">
+                {% for c in chamados %}
+                <li class="{{ 'critico' if c.prioridade == 'CRITICO' else '' }}">
+                    <strong>{{ c.solicitante }}</strong> — {{ c.setor }}
+                    {% if c.prioridade == 'CRITICO' %}<span class="badge">CRÍTICO</span>{% endif %}
+                    <div class="meta">{{ c.descricao }}</div>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+    </main>
+
+    <script>
+        document.getElementById("chamado-form").addEventListener("submit", async function(e) {
+            e.preventDefault();
+            const statusEl = document.getElementById("status-msg");
+            const payload = {
+                solicitante: document.getElementById("solicitante").value,
+                setor: document.getElementById("setor").value,
+                descricao: document.getElementById("descricao").value,
+                prioridade: document.getElementById("prioridade").value,
+            };
+            try {
+                const response = await fetch("/api/v1/chamados", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    const chamado = await response.json();
+                    const list = document.getElementById("chamados-list");
+                    const li = document.createElement("li");
+                    if (chamado.prioridade === "CRITICO") li.className = "critico";
+                    li.innerHTML = `<strong>${chamado.solicitante}</strong> — ${chamado.setor}${
+                        chamado.prioridade === "CRITICO" ? ' <span class="badge">CRÍTICO</span>' : ''
+                    }<div class="meta">${chamado.descricao}</div>`;
+                    list.prepend(li);
+                    this.reset();
+                    statusEl.textContent = "✅ Chamado aberto e equipe de TI notificada!";
+                    statusEl.className = "ok";
+                } else {
+                    const err = await response.json().catch(() => null);
+                    const detail = err?.detail;
+                    let msg = "❌ Erro ao abrir o chamado.";
+                    if (Array.isArray(detail)) {
+                        // Erros de validação do Pydantic
+                        msg = "❌ " + detail.map(d => d.msg).join(" | ");
+                    } else if (typeof detail === "string") {
+                        msg = "❌ " + detail;
+                    }
+                    statusEl.textContent = msg;
+                    statusEl.className = "err";
+                }
+            } catch {
+                statusEl.textContent = "❌ Falha de comunicação com o servidor.";
+                statusEl.className = "err";
+            }
+            statusEl.style.display = "block";
+        });
+    </script>
+</body>
+</html>
