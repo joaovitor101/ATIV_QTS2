@@ -28,9 +28,3 @@ class ChamadoFactory:
     def build_critico_payload(**kwargs) -> dict:
         """Gera payload de chamado com prioridade CRÍTICA."""
         return ChamadoFactory.build_payload(prioridade="CRITICO", **kwargs)
-
-
-    @staticmethod
-    def build_critico_payload(**kwargs) -> dict:
-        """Gera payload de chamado com prioridade CRÍTICA."""
-        return ChamadoFactory.build_payload(prioridade="CRITICO", **kwargs)
